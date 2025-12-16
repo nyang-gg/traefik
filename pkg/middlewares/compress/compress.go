@@ -17,6 +17,12 @@ import (
 
 const typeName = "Compress"
 
+const (
+	gzipLevel   = 8
+	brotliLevel = 4
+	zstdLevel   = 3
+)
+
 // defaultMinSize is the default minimum size (in bytes) required to enable compression.
 // See https://github.com/klauspost/compress/blob/9559b037e79ad673c71f6ef7c732c00949014cd2/gzhttp/compress.go#L47.
 const defaultMinSize = 1024
@@ -192,11 +198,13 @@ func (c *compress) newGzipHandler() (http.Handler, error) {
 		wrapper, err = gzhttp.NewWrapper(
 			gzhttp.ContentTypes(c.includes),
 			gzhttp.MinSize(c.minSize),
+			gzhttp.CompressionLevel(gzipLevel),
 		)
 	} else {
 		wrapper, err = gzhttp.NewWrapper(
 			gzhttp.ExceptContentTypes(c.excludes),
 			gzhttp.MinSize(c.minSize),
+			gzhttp.CompressionLevel(gzipLevel),
 		)
 	}
 
@@ -216,7 +224,7 @@ func (c *compress) newBrotliHandler(middlewareName string) (http.Handler, error)
 	}
 
 	newBrotliWriter := func(rw http.ResponseWriter) (CompressionWriter, string, error) {
-		return brotli.NewWriter(rw), brotliName, nil
+		return brotli.NewWriterLevel(rw, brotliLevel), brotliName, nil
 	}
 	return NewCompressionHandler(cfg, newBrotliWriter, c.next)
 }
@@ -230,7 +238,10 @@ func (c *compress) newZstdHandler(middlewareName string) (http.Handler, error) {
 	}
 
 	newZstdWriter := func(rw http.ResponseWriter) (CompressionWriter, string, error) {
-		writer, err := zstd.NewWriter(rw)
+		writer, err := zstd.NewWriter(
+			rw,
+			zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(zstdLevel)),
+		)
 		if err != nil {
 			return nil, "", fmt.Errorf("creating zstd writer: %w", err)
 		}
