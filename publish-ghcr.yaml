@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  GO_VERSION: "1.24"
+  CGO_ENABLED: 0
+  VERSION: ${{ github.ref_name }}
+  CODENAME: ramequin
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-webui:
+    if: github.ref_type == 'tag' && github.repository == 'nyang-gg/traefik'
+    uses: ./.github/workflows/template-webui.yaml
+
+  publish-ghcr:
+    if: github.ref_type == 'tag' && github.repository == 'nyang-gg/traefik'
+    runs-on: ubuntu-latest
+    needs:
+      - build-webui
+
+    steps:
+      - name: Check out code (for Dockerfile)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Artifact webui
+        uses: actions/download-artifact@v4
+        with:
+          name: webui.tar.gz
+
+      - name: Untar webui
+        run: |
+          tar xvf webui.tar.gz
+          rm webui.tar.gz
+
+      - name: Go generate
+        run: go generate
+
+      # dist/linux/amd64/traefik + dist/linux/arm64/traefik 생성
+      - name: Build linux binaries for image
+        run: |
+          make binary-linux-amd64 binary-linux-arm64
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push multi-arch image to GHCR
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/traefik"
+          TAG="${{ github.ref_name }}"
+
+          docker buildx build \
+            --push \
+            --platform linux/amd64,linux/arm64 \
+            -t "$IMAGE:$TAG" \
+            -t "$IMAGE:latest" \
+            -f Dockerfile .

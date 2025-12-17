@@ -4,9 +4,10 @@ FROM alpine:3.22
 RUN apk add --no-cache --no-progress ca-certificates tzdata
 
 ARG TARGETPLATFORM
-COPY ./dist/$TARGETPLATFORM/traefik /
+COPY ./dist/$TARGETPLATFORM/traefik /usr/local/bin/traefik
+RUN chmod +x /usr/local/bin/traefik
+COPY entrypoint.sh /
 
 EXPOSE 80
-VOLUME ["/tmp"]
-
-ENTRYPOINT ["/traefik"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["traefik"]
